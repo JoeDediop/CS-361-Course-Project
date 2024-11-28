@@ -5,6 +5,7 @@ import json
 # ZeroMQ context
 context = zmq.Context()
 
+
 def main_menu():
     """
     Display the main menu and prompt the user for a choice.
@@ -24,6 +25,7 @@ def main_menu():
         else:
             print("Invalid choice, please enter 1, 2, 3, or 'Exit'.")
 
+
 def generate_dungeon():
     """
     Prompts user for dungeon preferences, generates dungeon rooms and corridors,
@@ -33,7 +35,8 @@ def generate_dungeon():
     dungeon = None
 
     # Prompt user for dungeon size
-    print("\nTime to generate your dungeon! Input your choice from the options listed, once complete you will be prompted to confirm your choices.")
+    print(
+        "\nTime to generate your dungeon! Input your choice from the options listed, once complete you will be prompted to confirm your choices.")
     print(" - Choose a Dungeon Size (small, medium, large):")
     print(" - Dungeon size will determine the scale of the generated map.")
     print("Tip: A larger dungeon may take longer to generate.")
@@ -68,16 +71,21 @@ def generate_dungeon():
 
     print(f"\nCurrently, you have chosen a '{size}' sized dungeon and '{complexity}' complexity corridors.")
     if treasure:
-        print(f"You also chose to include {treasure['quality']} treasure.")
+        print(f"You chose to include {treasure['quality']} treasure.")
     else:
         print("You chose not to include treasure in your dungeon.")
 
-    # if hazards:
-    #     print(f"You also chose to include monsters and traps: {monsters['details']}.")
-    # else:
-    #     print("You chose not to include monsters and traps in your dungeon.")
+    if hazards:
+        difficulty = hazards['difficulty']
+        monsters = hazards['hazards'].get('monsters', [])
+        traps = hazards['hazards'].get('traps',[])
+        print(f"You chose to include hazards of {difficulty} difficulty")
+    else:
+        print("You chose not to include monsters and traps in your dungeon.")
 
-    print("If this is what you want, please type 'yes' to generate the dungeon and view the contents, otherwise type 'no' to enter new choices.")
+    print(
+        "If this is what you want, please type 'yes' to generate the dungeon and view the contents, otherwise type "
+        "'no' to enter new choices.")
     confirmation = input("Confirm? (yes or no): ").lower()
     while confirmation not in ["yes", "no"]:
         print("Invalid input. Please enter 'yes' or 'no'.")
@@ -105,6 +113,7 @@ def generate_dungeon():
 
     return dungeon
 
+
 def generate_rooms(size):
     """
     Generates a list of rooms based on the specified dungeon size.
@@ -120,8 +129,10 @@ def generate_rooms(size):
     num_rooms = random.randint(*room_counts[size])
     room_sizes_available = room_sizes[size]
 
-    rooms = [{"description": "An empty room", "dimensions": random.choice(room_sizes_available)} for _ in range(num_rooms)]
+    rooms = [{"description": "An empty room", "dimensions": random.choice(room_sizes_available)} for _ in
+             range(num_rooms)]
     return rooms
+
 
 def generate_corridors(rooms, complexity):
     """
@@ -133,22 +144,26 @@ def generate_corridors(rooms, complexity):
 
     # Add base connections
     for i in range(room_count - 1):
-        corridors.append({"description": f"Corridor connecting Room {i+1} to Room {i+2}"})
+        corridors.append({"description": f"Corridor connecting Room {i + 1} to Room {i + 2}"})
 
     if complexity == "realistic" or complexity == "complex":
-        additional_corridors = random.randint(1, room_count // 2) if complexity == "realistic" else random.randint(room_count // 2, room_count)
+        additional_corridors = random.randint(1, room_count // 2) if complexity == "realistic" else random.randint(
+            room_count // 2, room_count)
         for _ in range(additional_corridors):
             room_a, room_b = random.sample(range(room_count), 2)
-            corridors.append({"description": f"Extra corridor connecting Room {room_a+1} to Room {room_b+1}"})
+            corridors.append({"description": f"Extra corridor connecting Room {room_a + 1} to Room {room_b + 1}"})
 
     return corridors
+
 
 def request_treasure(size):
     """
     Prompts the user to decide whether to generate treasure and its quality.
     Returns a dictionary with treasure details or None if skipped.
     """
-    print("\nWould you like to generate treasure for your dungeon? You will choose between low, medium, or high-quality treasure.")
+    print(
+        "\nWould you like to generate treasure for your dungeon? You will choose between low, medium, or high-quality "
+        "treasure.")
     print(" - The amount of treasure will be determined based on the size dungeon you chose.")
     choice = input("Enter 'yes' to include treasure or 'no' to skip: ").strip().lower()
 
@@ -197,12 +212,12 @@ def request_treasure(size):
         print("\nYou chose not to include treasure in your dungeon.")
         return None
 
+
 def request_monsters_and_traps():
     """
     Requests both monsters and traps from the microservice based on the user-specified difficulty level.
     Returns a dictionary with monsters and traps or an error message.
     """
-    import zmq
 
     print("\nWould you like to generate monsters and traps for your dungeon? You will choose between "
           "an easy, medium or hard difficulty for the randomly generated monsters and traps.")
@@ -224,7 +239,7 @@ def request_monsters_and_traps():
         socket = context.socket(zmq.REQ)
         try:
             print("\nConnecting to the Monsters and Traps microservice...")
-            socket.connect("tcp://localhost:5556")  # Microservice endpoint
+            socket.connect("tcp://localhost:5559")  # Microservice endpoint
 
             # Send the request
             request_data = {"difficulty": difficulty}
@@ -239,7 +254,7 @@ def request_monsters_and_traps():
                 return None
 
             print("\nMonsters and traps received successfully!")
-            return response
+            return {'difficulty': difficulty, 'hazards':response}
 
         except zmq.ZMQError as e:
             print(f"An error occurred while communicating with the microservice: {e}")
@@ -251,6 +266,7 @@ def request_monsters_and_traps():
     else:
         print("\nYou chose not to include hazards in your dungeon.")
         return None
+
 
 def review_dungeon(dungeon):
     if not dungeon:
@@ -265,6 +281,7 @@ def review_dungeon(dungeon):
             export_dungeon(dungeon)
         elif choice == '3':
             return
+    print(f"Dungeon data: {dungeon}") # TEST LINE
     print("\nHere is your generated dungeon!:")
     print("Size:", dungeon["size"])
     print("Complexity:", dungeon["complexity"])
@@ -278,6 +295,35 @@ def review_dungeon(dungeon):
     print("Corridors:")
     for corridor in dungeon["corridors"]:
         print(f" - {corridor['description']}")
+
+    # Display treasure
+    if dungeon.get("treasure"):
+        print("\nTreasure:")
+        print(f"Quality: {dungeon['treasure']['quality']}")
+        if "items" in dungeon["treasure"]:
+            print("Items:")
+            for item in dungeon["treasure"]["items"]:
+                print(f" - {item}")
+        if "value" in dungeon["treasure"]:
+            print(f"Total Value: {dungeon['treasure']['value']}")
+    else:
+        print("\nNo treasure was included in this dungeon.")
+
+    # Display monsters and traps
+    if dungeon.get("monsters") or dungeon.get("traps"):
+        print("\nHazards:")
+        if "monsters" in dungeon:
+            print("Monsters:")
+            for monster in dungeon["monsters"]:
+                print(f" - {monster}")
+
+        if "traps" in dungeon:
+            print("Traps:")
+            for trap in dungeon["traps"]:
+                print(f" - {trap}")
+    else:
+        print("\nNo hazards (monsters or traps) were included in this dungeon.")
+
     choice = display_review_menu()
 
     if choice == '1':
@@ -306,7 +352,8 @@ def export_dungeon(dungeon):
             else:
                 print("Invalid choice, please enter 1 or 2.")
 
-    print("\nYou are about to export your dungeon, please type 'confirm' to download the dungeon or type 'back' to return to the main menu:")
+    print(
+        "\nYou are about to export your dungeon, please type 'confirm' to download the dungeon or type 'back' to return to the main menu:")
     export_choice = input("Please type 'confirm' or 'back': ")
 
     # Export to dungeon.txt file in local folder
@@ -328,6 +375,7 @@ def export_dungeon(dungeon):
         print("")
         return
 
+
 def display_review_menu():
     print("\nSelect one of the options below to continue:")
     print("1. Regenerate Dungeon")
@@ -340,6 +388,7 @@ def display_review_menu():
             return choice
         else:
             print("Invalid choice, please enter 1, 2, or 3.")
+
 
 # Main Program Flow
 def main():
@@ -363,6 +412,7 @@ def main():
                 continue
         else:
             print("Invalid choice, please try again.")
+
 
 if __name__ == "__main__":
     main()
