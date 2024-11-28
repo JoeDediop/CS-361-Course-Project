@@ -18,6 +18,7 @@ MONSTERS_AND_TRAPS = {
     }
 }
 
+
 def generate_monsters_and_traps(difficulty):
     """
     Generates monsters and traps based on the specified difficulty.
@@ -31,11 +32,12 @@ def generate_monsters_and_traps(difficulty):
 
     return {"monsters": monsters, "traps": traps}
 
+
 def main():
     # Set up ZeroMQ communication
     context = zmq.Context()
     socket = context.socket(zmq.REP)
-    socket.bind("tcp://*:5556")
+    socket.bind("tcp://*:5559")
 
     print("Monster and Trap Generation Microservice is running...")
 
@@ -50,6 +52,7 @@ def main():
 
         # Send response
         socket.send_json(response)
+
 
 if __name__ == "__main__":
     main()
