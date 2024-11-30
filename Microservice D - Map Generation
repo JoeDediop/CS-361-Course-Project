@@ -1,0 +1,151 @@
+import zmq
+import random
+import re
+
+def generate_ascii_map(layout):
+    # Map constants
+    max_x = max(int(room["dimensions"].split('x')[0]) for room in layout["rooms"])
+    max_y = max(int(room["dimensions"].split('x')[1]) for room in layout["rooms"])
+
+    total_room_area = sum(int(room["dimensions"].split('x')[0]) * int(room["dimensions"].split('x')[1]) for room in layout["rooms"])
+    map_area = total_room_area * 3  # Increase space for better corridor placement
+    MAP_SIZE = int(map_area**0.5)
+    ROOM_PADDING = 3  # Increase padding between rooms
+
+    # Create an empty map
+    ascii_map = [[' ' for _ in range(MAP_SIZE)] for _ in range(MAP_SIZE)]
+
+    room_data = []
+    for i, room in enumerate(layout["rooms"]):
+        width, height = map(int, room["dimensions"].split('x'))
+        x = i * (max_x + 5)
+        y = i * (max_y + 5)
+        room_data.append((x, y, width, height))
+
+    # Generate room_positions
+    room_positions = {f"room{i+1}": (x + width // 2 + 1, y + height // 2 + 1) for i, (x, y, width, height) in enumerate(room_data)}
+
+    def draw_room(x, y, width, height, room_id):
+        for i in range(height + 2):
+            for j in range(width + 2):
+                if 0 <= y + i < MAP_SIZE and 0 <= x + j < MAP_SIZE:
+                    if i == 0 or i == height + 1 or j == 0 or j == width + 1:
+                        ascii_map[y + i][x + j] = '#'
+                    else:
+                        ascii_map[y + i][x + j] = '.'
+        if 0 <= y + height // 2 + 1 < MAP_SIZE and 0 <= x + width // 2 + 1 < MAP_SIZE:
+            ascii_map[y + height // 2 + 1][x + width // 2 + 1] = str(room_id)
+
+    for i, room in enumerate(layout["rooms"]):
+        width, height = map(lambda x: int(x) // 5, room["dimensions"].split('x'))
+        attempts = 0
+        while attempts < 100:
+            x = random.randint(0, MAP_SIZE - width - ROOM_PADDING - 2)
+            y = random.randint(0, MAP_SIZE - height - ROOM_PADDING - 2)
+            if all(ascii_map[y + dy][x + dx] == ' '
+                   for dx in range(-ROOM_PADDING, width + ROOM_PADDING + 2)
+                   for dy in range(-ROOM_PADDING, height + ROOM_PADDING + 2)
+                   if 0 <= y + dy < MAP_SIZE and 0 <= x + dx < MAP_SIZE):
+                draw_room(x, y, width, height, i + 1)
+                room_positions[f"room{i+1}"] = (x + width // 2 + 1, y + height // 2 + 1)
+                break
+            attempts += 1
+
+    def draw_corridor(start, end, is_extra=False):
+        x1, y1 = start
+        x2, y2 = end
+        corridor_char = '*' if is_extra else '+'
+
+        # Horizontal path
+        for x in range(min(x1, x2), max(x1, x2) + 1):
+            if 0 <= y1 < MAP_SIZE and 0 <= x < MAP_SIZE:
+                if ascii_map[y1][x] in [' ', '+', '*']:
+                    ascii_map[y1][x] = corridor_char
+
+        # Vertical path
+        for y in range(min(y1, y2), max(y1, y2) + 1):
+            if 0 <= y < MAP_SIZE and 0 <= x2 < MAP_SIZE:
+                if ascii_map[y][x2] in [' ', '+', '*']:
+                    ascii_map[y][x2] = corridor_char
+
+    # Debugging: Print room positions
+    print("Room positions:", room_positions)
+
+    # Debugging: Print the corridors that are being processed
+    # Processing corridors with enhanced room name extraction
+    for corridor in layout["corridors"]:
+        desc = corridor["description"]
+        # print(f"Processing corridor: {desc}")  # Debugging line
+
+        # Ensure proper extraction of room names
+        try:
+            # Use regex to find two room numbers in the description (assuming the format "Room X to Room Y")
+            match = re.search(r"Room (\d+) to Room (\d+)", desc)
+
+            if match:
+                # Extract room numbers from the match groups
+                room_a = match.group(1)
+                room_b = match.group(2)
+
+                # Debugging: Print the extracted room numbers
+                print(f"Extracted rooms: {room_a}, {room_b}")
+
+                # Check if the corridor is extra
+                is_extra = "Extra" in desc
+
+                # Construct room keys and ensure they exist in room_positions
+                start_room = f"room{room_a}"
+                end_room = f"room{room_b}"
+
+                # Debugging: Print the exact room keys being searched for
+                print(f"Start room key: {start_room}, End room key: {end_room}")
+
+                # Ensure both rooms exist in room_positions
+                if start_room in room_positions and end_room in room_positions:
+                    start = room_positions[start_room]
+                    end = room_positions[end_room]
+                    is_extra = "Extra" in desc
+                    draw_corridor(start, end, is_extra)
+                    # Debugging: Print start, end positions, and is_extra status
+                    print(f"Start: {start}, End: {end}, Is extra: {is_extra}")
+                else:
+                    print(f"Warning: Invalid room in corridor {desc}")
+
+        except IndexError as e:
+            print(f"Error processing corridor {desc}: {e}")
+
+    def trim_map(m):
+        rows = [i for i, row in enumerate(m) if set(row) != {' '}]
+        cols = [i for i in range(len(m[0])) if set(row[i] for row in m) != {' '}]
+        return [row[min(cols):max(cols)+1] for row in m[min(rows):max(rows)+1]]
+
+    trimmed_map = trim_map(ascii_map)
+
+    # Debugging: Print final trimmed map
+    print("Final ASCII map:")
+    for row in trimmed_map:
+        print(''.join(row))  # Debugging line
+
+    return '\n'.join(''.join(row) for row in trimmed_map)
+
+# Set up ZeroMQ context and socket
+context = zmq.Context()
+socket = context.socket(zmq.REP)
+socket.bind("tcp://*:5558")
+
+print("ASCII map generator microservice started, waiting for requests...")
+
+while True:
+    # Wait for next request from client
+    layout = socket.recv_json()
+
+    # Debugging: Print the received layout
+    # print("Received layout:", layout)  # Debugging line
+
+    print("Received request, generating map...")
+
+    # Generate ASCII map
+    ascii_map = generate_ascii_map(layout)
+
+    # Send reply back to client
+    socket.send_string(ascii_map)
