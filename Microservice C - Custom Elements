@@ -1,0 +1,81 @@
+import zmq
+import json
+import os
+
+# Constants
+DATA_FILE = "custom_elements.json"
+
+def initialize_storage():
+    """Ensure the storage file exists and is properly formatted."""
+    if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'w') as f:
+            json.dump({"monsters": [], "treasures": []}, f)
+
+def load_data():
+    """Load custom elements from the JSON file."""
+    try:
+        with open(DATA_FILE, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        # Reinitialize if the file is corrupted or missing
+        initialize_storage()
+        return {"monsters": [], "treasures": []}
+
+def save_data(data):
+    """Save the updated custom elements to the JSON file."""
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def add_custom_element(element_type, name, description):
+    """
+    Add a custom element to the JSON file.
+    :param element_type: 'monsters'
+    :param name: Name of the custom element
+    :param description: Description of the custom element
+    """
+    data = load_data()
+    if element_type not in data:
+        return {"error": f"Invalid element type: {element_type}"}
+
+    data[element_type].append({"name": name, "description": description})
+    save_data(data)
+    return {"status": "success", "message": f"{element_type.capitalize()} '{name}' added successfully."}
+
+def get_custom_elements():
+    """Retrieve all custom elements."""
+    return load_data()
+
+def handle_request(request):
+    """
+    Process incoming ZeroMQ requests.
+    :param request: A dictionary with action and parameters
+    """
+    action = request.get("action")
+    if action == "add":
+        element_type = request.get("type")
+        name = request.get("name")
+        description = request.get("description")
+        return add_custom_element(element_type, name, description)
+    elif action == "get":
+        return get_custom_elements()
+    else:
+        return {"error": "Invalid action"}
+
+def main():
+    """Run the microservice."""
+    initialize_storage()
+    context = zmq.Context()
+    socket = context.socket(zmq.REP)
+    socket.bind("tcp://*:5560")  # Port for the custom elements service
+
+    print("Custom Elements Service is running on port 5560...")
+    while True:
+        try:
+            request = socket.recv_json()
+            response = handle_request(request)
+            socket.send_json(response)
+        except Exception as e:
+            socket.send_json({"error": str(e)})
+
+if __name__ == "__main__":
+    main()
