@@ -16,14 +16,15 @@ def main_menu():
     print("1. Generate a Dungeon")
     print("2. Review Dungeon")
     print("3. Export Dungeon")
+    print("4. Custom Elements Menu")
     print("Or type 'Exit' to quit the program!")
 
     while True:
         choice = input("Please enter your choice: ").strip().lower()
-        if choice in ["1", "2", "3", "Exit", "exit"]:
+        if choice in ["1", "2", "3", "4", "Exit", "exit"]:
             return choice
         else:
-            print("Invalid choice, please enter 1, 2, 3, or 'Exit'.")
+            print("Invalid choice, please enter 1, 2, 3, 4, or 'Exit'.")
 
 
 def generate_dungeon():
@@ -115,45 +116,62 @@ def generate_dungeon():
 
 
 def generate_rooms(size):
-    """
-    Generates a list of rooms based on the specified dungeon size.
-    Returns a list of room dictionaries, each with a description and dimensions.
-    """
     room_counts = {"small": (2, 5), "medium": (4, 8), "large": (7, 12)}
     room_sizes = {
         "small": ["10x10", "15x15", "10x15", "15x20", "20x20"],
         "medium": ["15x15", "15x20", "20x20", "25x25", "25x40", "25x30"],
         "large": ["15x15", "15x20", "20x20", "25x25", "25x40", "25x30", "30x40", "40x40", "50x50", "50x60"]
     }
-
     num_rooms = random.randint(*room_counts[size])
-    room_sizes_available = room_sizes[size]
+    rooms = []
 
-    rooms = [{"description": "An empty room", "dimensions": random.choice(room_sizes_available)} for _ in
-             range(num_rooms)]
+    grid_size = int(num_rooms**0.5) + 1
+    for i in range(num_rooms):
+        x = i % grid_size
+        y = i // grid_size
+        room = {
+            "id": i + 1,
+            "description": "An empty room",
+            "dimensions": random.choice(room_sizes[size]),
+            "position": (x, y)
+        }
+        rooms.append(room)
+
     return rooms
 
+unique_corridors = set()
 
 def generate_corridors(rooms, complexity):
-    """
-    Generates corridors connecting rooms based on the specified complexity level.
-    Returns a list of corridor dictionaries.
-    """
     corridors = []
     room_count = len(rooms)
 
-    # Add base connections
+    # Connect rooms sequentially
     for i in range(room_count - 1):
-        corridors.append({"description": f"Corridor connecting Room {i + 1} to Room {i + 2}"})
+        corridor = add_corridor(rooms[i]['id'], rooms[i+1]['id'])
+        if corridor:
+            corridors.append(corridor)
 
-    if complexity == "realistic" or complexity == "complex":
-        additional_corridors = random.randint(1, room_count // 2) if complexity == "realistic" else random.randint(
-            room_count // 2, room_count)
-        for _ in range(additional_corridors):
-            room_a, room_b = random.sample(range(room_count), 2)
-            corridors.append({"description": f"Extra corridor connecting Room {room_a + 1} to Room {room_b + 1}"})
+    # Add extra corridors based on complexity
+    if complexity in ["realistic", "complex"]:
+        extra_corridors = random.randint(1, room_count) if complexity == "realistic" or room_count == 2 else random.randint(room_count, room_count * 2)
+        attempts = 0
+        while len(corridors) < room_count - 1 + extra_corridors and attempts < 100:
+            room_a, room_b = random.sample(rooms, 2)
+            corridor = add_corridor(room_a['id'], room_b['id'], is_extra=True)
+            if corridor:
+                corridors.append(corridor)
+            attempts += 1
 
     return corridors
+
+def add_corridor(room_a, room_b, is_extra=False):
+    if room_a != room_b:
+        connection = tuple(sorted([room_a, room_b]))
+        if connection not in unique_corridors:
+            unique_corridors.add(connection)
+            prefix = "Extra corridor" if is_extra else "Corridor"
+            return {"description": f"{prefix} connecting Room {room_a} to Room {room_b}"}
+    return None
 
 
 def request_treasure(size):
@@ -267,6 +285,99 @@ def request_monsters_and_traps():
         print("\nYou chose not to include hazards in your dungeon.")
         return None
 
+def request_ascii_map(dungeon):
+    context = zmq.Context()
+    socket = context.socket(zmq.REQ)
+    socket.connect("tcp://localhost:5558")
+
+    layout_data = {
+        "rooms": [{"id": f"room{room['id']}", "dimensions": room["dimensions"]} for room in dungeon["rooms"]],
+        "corridors": [{"description": c["description"]} for c in dungeon["corridors"]]
+    }
+
+    socket.send_json(layout_data)
+    ascii_map = socket.recv_string()
+
+    socket.close()
+    context.term()
+
+    return ascii_map
+
+def custom_element_menu():
+    """Access the memnu for using the custom elements microservice"""
+    print("\nHere you can add custom treasure or monsters, which can then be used during random dungeon generation!")
+    print("Please choose one of the options below:")
+    print("1. Add custom element")
+    print("2. View custom elements")
+    print("3. Return to Main Menu")
+
+    choice = input("Enter your choice: ")
+
+    if choice == "1":
+        # Option 1: Add a custom element (monster or treasure)
+        add_custom_element_to_service()
+    elif choice == "2":
+        # Option 2: View custom elements (monsters and treasures)
+        view_custom_elements()
+    elif choice == "3":
+        # Option 3: Return to the main menu
+        return
+    else:
+        print("Invalid choice. Please choose a valid option.")
+
+def add_custom_element_to_service():
+    """Add a custom element using the custom elements service."""
+    # Input validation for element type
+    while True:
+        element_type = input("\nEnter element type ('monsters' or 'treasures'): ").strip().lower()
+        if element_type not in ["monsters", "treasures"]:
+            print("Invalid input. Please enter 'monsters' or 'treasures' only.")
+        else:
+            break
+
+    # Input validation for name
+    while True:
+        name = input("Enter the name of the element (max 100 characters): ").strip()
+        if len(name) > 100:
+            print("Name is too long! Please enter a name with 100 characters or fewer.")
+        else:
+            break
+
+    # Input validation for description
+    while True:
+        description = input("Enter a description of the element (max 500 characters): ").strip()
+        if len(description) > 500:
+            print("Description is too long! Please enter a description with 500 characters or fewer.")
+        else:
+            break
+
+    request_data = {"action": "add", "type": element_type, "name": name, "description": description}
+    socket = context.socket(zmq.REQ)
+    socket.connect("tcp://localhost:5560")
+
+    socket.send_json(request_data)
+    response = socket.recv_json()
+    print(response.get("message", response.get("error")))
+
+def view_custom_elements():
+    """Retrieve and display custom elements from the custom elements service."""
+    request_data = {"action": "get"}
+    socket = context.socket(zmq.REQ)
+    socket.connect("tcp://localhost:5560")
+
+    socket.send_json(request_data)
+    response = socket.recv_json()
+
+    monsters = response.get("monsters", [])
+    treasures = response.get("treasures", [])
+
+    print("\nCustom Monsters:")
+    for monster in monsters:
+        print(f"- {monster['name']}: {monster['description']}")
+
+    print("\nCustom Treasures:")
+    for treasure in treasures:
+        print(f"- {treasure['name']}: {treasure['description']}")
 
 def review_dungeon(dungeon):
     if not dungeon:
@@ -281,11 +392,11 @@ def review_dungeon(dungeon):
             export_dungeon(dungeon)
         elif choice == '3':
             return
-    print(f"Dungeon data: {dungeon}") # TEST LINE
+
     print("\nHere is your generated dungeon!:")
     print("Size:", dungeon["size"])
     print("Complexity:", dungeon["complexity"])
-
+    # print(f'dungeon:', dungeon)             # TEST LINE
     # Display rooms with numbering
     print("\nRooms:")
     for index, room in enumerate(dungeon["rooms"], start=1):
@@ -295,6 +406,11 @@ def review_dungeon(dungeon):
     print("Corridors:")
     for corridor in dungeon["corridors"]:
         print(f" - {corridor['description']}")
+
+    # Generate and display ASCII map
+    ascii_map = request_ascii_map(dungeon)
+    print("\nASCII Map of the Dungeon:")
+    print(ascii_map)
 
     # Display treasure
     if dungeon.get("treasure"):
@@ -356,6 +472,8 @@ def export_dungeon(dungeon):
         "\nYou are about to export your dungeon, please type 'confirm' to download the dungeon or type 'back' to return to the main menu:")
     export_choice = input("Please type 'confirm' or 'back': ")
 
+    ascii_map = request_ascii_map(dungeon)
+
     # Export to dungeon.txt file in local folder
     if export_choice == 'confirm':
         with open("dungeon.txt", "w") as file:
@@ -368,6 +486,9 @@ def export_dungeon(dungeon):
             file.write("Corridors:\n")
             for corridor in dungeon["corridors"]:
                 file.write(f" - {corridor['description']}\n")
+            file.write("Map:\n")
+            file.write(ascii_map)
+
         print("Congratulations, your dungeon has been saved to your computer as 'dungeon.txt'")
 
     # Return to the main menu
@@ -401,6 +522,8 @@ def main():
             review_dungeon(dungeon)
         elif choice == "3":
             export_dungeon(dungeon)
+        elif choice == "4":
+            custom_element_menu()
         elif choice.lower() == "exit":
             print("\nAre you sure you want to exit? Your dungeon will not be saved, please export it before exiting.")
             confirm_choice = input("Type yes to confirm or no to return to select another option: ")
